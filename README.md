@@ -1,10 +1,10 @@
-# RootAPIMonitor.yaml - Monitor AWS for Root Sign Ins and API Activity
+Monitor AWS for Root Sign Ins and API Activity
 
 ## Overview
 
-This CloudFormation generates installs an AWS Lambda function and an
-EventBridge rule that detects the following events and sends out SNS
-notifications.
+This CloudFormation template generates installs an AWS Lambda function
+and an EventBridge rule that detects the following events and sends out
+SNS notifications.
 
 1. API calls made by the root user
 2. Console logins by the root user
