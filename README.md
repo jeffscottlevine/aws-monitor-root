@@ -25,7 +25,7 @@ Sudhanshu Malhotra.
 
 https://aws.amazon.com/blogs/mt/monitor-and-notify-on-aws-account-root-user-activity/
 
-The code was subsequently revised by Jeffrey S. Levine (jeffscottlevine@).
+The code was subsequently revised by Jeffrey S. Levine.
 
 ## Additional Notes
 
