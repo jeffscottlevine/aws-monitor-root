@@ -1,0 +1,204 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Metadata: 
+  AWS::CloudFormation::Interface: 
+    ParameterGroups: 
+    - Label: "Amazon SNS parameters"
+      Parameters: 
+      - SNSTopicName
+      - SNSSubscriptions
+
+Parameters: 
+  SNSTopicName: 
+    Description: "Amazon SNS topic name for root API activity notifications"
+    Type: String
+  SNSSubscriptions: 
+    Type: String
+    Description: "Mail address to subscribe to the Amazon SNS topic"
+
+Resources: 
+  RootActivitySNSTopic: 
+    Type: "AWS::SNS::Topic"
+    Properties: 
+      DisplayName: "Root-ALERT"
+      Subscription: 
+      - Endpoint: !Ref SNSSubscriptions
+        Protocol: "email"
+      TopicName: !Ref SNSTopicName
+
+  EventsRule: 
+    Type: "AWS::Events::Rule"
+    Properties: 
+      Description: "Events rule for monitoring root API activity"
+      State: ENABLED
+      EventPattern: 
+        detail-type: 
+        - "AWS API Call via CloudTrail"
+        - "AWS Console Sign In via CloudTrail"
+        detail: 
+          userIdentity: 
+            type: 
+            - Root
+      Targets: 
+      - Arn: !GetAtt RootActivityLambda.Arn
+        Id: !Ref AWS::StackName
+
+  LambdaRootAPIMonitorRole: 
+    Type: "AWS::IAM::Role"
+    Properties: 
+      AssumeRolePolicyDocument: 
+        Version: "2012-10-17"
+        Statement: 
+        - Effect: Allow
+          Principal: 
+            Service: 
+            - lambda.amazonaws.com
+          Action:
+          - sts:AssumeRole
+
+  LambdaRootAPIMonitorPolicy: 
+    Type: "AWS::IAM::Policy"
+    DependsOn: LambdaRootAPIMonitorRole
+    Properties: 
+      PolicyDocument: 
+        Version: "2012-10-17"
+        Statement: 
+        - Sid: LogStreamAccess
+          Effect: Allow
+          Action: 
+          - logs:CreateLogGroup
+          - logs:CreateLogStream
+          - logs:PutLogEvents
+          Resource: 
+          - "arn:aws:logs:*:*:*"
+        - Sid: SNSPublishAllow
+          Effect: Allow
+          Action: 
+          - sns:Publish
+          Resource: 
+          - "arn:aws:sns:*:*:*"
+        - Sid: ListAccountAlias
+          Action: 
+          - "iam:ListAccountAliases"
+          Effect: Allow
+          Resource: "*"
+      PolicyName: RootAPIMonitorPolicy
+      Roles: 
+      - !Ref LambdaRootAPIMonitorRole
+
+  RootActivityLambda: 
+    Type: "AWS::Lambda::Function"
+    Properties: 
+     Handler: "index.handler"
+     Role: !GetAtt LambdaRootAPIMonitorRole.Arn
+     Runtime: "python3.7"
+     Environment: 
+       Variables: 
+         SNSARN: !Ref RootActivitySNSTopic
+         LOGGING_LEVEL: DEBUG
+     Code:
+       ZipFile: |
+         import json
+         import boto3
+         import logging
+         import os
+         from botocore.exceptions import ClientError
+         
+         logging_level_str = os.getenv("LOGGING_LEVEL", "DEBUG")
+         logging_level_numeric = getattr(
+             logging,
+             logging_level_str.upper(),
+             None
+         )
+         if isinstance(logging_level_numeric, int) is None:
+             raise ValueError("Invalid logging level")
+         logging.basicConfig(level=logging_level_numeric)
+         logger=logging.getLogger(__name__)
+         
+         def handler(event, context):
+             logger.setLevel(logging_level_numeric)
+             
+             event_name = event['detail']['eventName']
+             user = event['detail']['userIdentity']['type']
+             snsARN = os.getenv("SNSARN", None)
+             if snsARN is None:
+                 raise ValueError("SNSARN is undefined")
+             
+             logger.debug("Event: " + json.dumps(event))
+             logger.debug("Event name: " + event_name)
+             logger.debug("SNSARN: " + snsARN)
+             logger.debug("User: " + user)
+             
+             try:
+                 iam_client = boto3.client('iam')
+                 AWS_account_aliases = iam_client.list_account_aliases()
+             except ClientError as e:
+                 logger.error("IAM client error: " + json.dumps(e))
+                 raise Exception("IAM client error: " + json.dumps(e))
+             
+             if AWS_account_aliases:
+                 AWS_account_alias = AWS_account_aliases['AccountAliases'][0]
+             else:
+                 AWS_account_alias = None
+             
+             try:
+                 sts_client = boto3.client('sts')
+                 AWS_account_id = sts_client.get_caller_identity()['Account']
+             except ClientError as e:
+                 logger.error("STS client error: " + json.dumps(e))
+                 raise Exception("STS client error: " + json.dumps(e))
+             
+             if event['detail-type'] == "AWS Console Sign In via CloudTrail":
+                login_status=event['detail']['responseElements']['ConsoleLogin']
+                if login_status == "Success":
+                    sns_subject = "Successful"
+                else:
+                    sns_subject = "Failed"
+                
+                sns_subject += " AWS Root Console Sign-in"
+             else:
+                sns_subject = "Root API Call " + event_name
+
+             sns_subject += " Detected in Account " + AWS_account_id
+             
+             if AWS_account_alias is not None:
+                 sns_subject += " (" + AWS_account_alias +")"
+             
+             try: 
+                 sns_client = boto3.client('sns')
+                 sns_client.publish(
+                     TargetArn = snsARN,
+                     Subject = sns_subject,
+                     Message = json.dumps(
+                         {
+                             'default': json.dumps(event),
+                             'email': json.dumps(
+                                 event,
+                                 separators=(',', ':'),
+                                 indent=4
+                             )
+                         }
+                     ),
+                     MessageStructure='json')
+             except ClientError as e:
+                 logger.error("SNS client error: " + json.dumps(e))
+                 raise Exception("SNS client error: " + json.dumps(e))
+           
+  LambdaPermission: 
+    Type: "AWS::Lambda::Permission"
+    Properties: 
+      Action: "lambda:InvokeFunction"
+      FunctionName: !Ref RootActivityLambda
+      Principal: "events.amazonaws.com"
+      SourceArn: !GetAtt EventsRule.Arn
+
+Outputs: 
+  EventsRule: 
+    Value: !Ref EventsRule
+    Description: "Event Rule ID"
+  LambdaFunctionName: 
+    Value: !Ref RootActivityLambda
+    Description: "Lambda function logical ID"
+  SNSTopicName: 
+    Value: !Ref SNSTopicName
+    Description: "SNS Topic Name"
