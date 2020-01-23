@@ -9,14 +9,21 @@ SNS notifications.
 1. API calls made by the root user
 2. Console logins by the root user
 
-## Environment Variables
+## CloudFormation parameters
 
-The Lambda function also checks the following variables:
+The CloudFomration template prompts for these parameters.
 
-LOGGING_LEVEL (optional, default DEBUG) - the Python logger
-value
+1. The name of an SNS topic to create
+2. The e-mail address to subscribe to the SNS topic
 
-SNSARN - The AWS SNS Topic ARN for sending messages
+## Lambda function environment variables
+
+The Lambda function that's installed uses two environment variables.
+
+1. SNSARN - Initially set to the ARN of the SNS topic that is
+provisioned by CloudFormation
+2. LOGGING_LEVEL - The value to be passed to the Python logger()
+function, initially set to DEBUG
 
 ## Authorship
 
@@ -27,7 +34,7 @@ https://aws.amazon.com/blogs/mt/monitor-and-notify-on-aws-account-root-user-acti
 
 The code was subsequently revised by Jeffrey S. Levine.
 
-## Additional Notes
+## Additional notes
 
 NOTE FOR CLOUDFORMATION STACKETS: If you intend to deploy this
 template as part of a CloudFormation StackSet, please keep the
