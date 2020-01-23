@@ -2,9 +2,9 @@
 
 ## Overview
 
-This CloudFormation template generates installs an AWS Lambda function
-and an EventBridge rule that detects the following events and sends out
-SNS notifications.
+The CloudFormation template in this repo installs an AWS Lambda function
+and an Amazon EventBridge rule that detects the following events and sends
+out Amazon SNS notifications.
 
 1. API calls made by the root user
 2. Console logins by the root user
