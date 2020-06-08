@@ -36,7 +36,7 @@ The code was subsequently revised by Jeffrey S. Levine.
 
 ## Additional notes
 
-NOTE FOR CLOUDFORMATION STACKETS: If you intend to deploy this
+NOTE FOR CLOUDFORMATION STACKSETS: If you intend to deploy this
 template as part of a CloudFormation StackSet, please keep the
 StackSet name short.  If you use a long StackSet name, the
 resource names will exceed the 64 character limit and will cause
